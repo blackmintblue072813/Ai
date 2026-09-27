@@ -1,0 +1,6 @@
+{
+  "name": "LogArchive",
+  "description": "지우기 아까운 AI 채팅 로그, 가상 웹툰 댓글, 캐릭터 대화를 폴더별로 깔끔하게 정리하고 몰입감 있게 감상하는 로컬 전용 아카이브",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
