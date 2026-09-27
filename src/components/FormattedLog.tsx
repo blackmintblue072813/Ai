@@ -48,6 +48,22 @@ export const FONT_SIZE_CLASSES: Record<
   },
 };
 
+type BlockType =
+  | { type: 'codeblock'; language: string; content: string }
+  | { type: 'blockquote'; lines: string[] }
+  | { type: 'image'; alt: string; src: string }
+  | { type: 'divider' }
+  | { type: 'best_badge'; text: string }
+  | { type: 'comment_badge'; text: string }
+  | { type: 'h1'; text: string }
+  | { type: 'h2'; text: string }
+  | { type: 'h3'; text: string }
+  | { type: 'h4'; text: string }
+  | { type: 'h5'; text: string }
+  | { type: 'nickname'; name: string }
+  | { type: 'empty' }
+  | { type: 'p'; text: string };
+
 export const FormattedLog: React.FC<FormattedLogProps> = ({
   content,
   fontSize = 'base',
@@ -58,167 +74,338 @@ export const FormattedLog: React.FC<FormattedLogProps> = ({
   if (!content) return null;
 
   const sizeClasses = FONT_SIZE_CLASSES[fontSize] || FONT_SIZE_CLASSES.base;
-  const lines = content.split('\n');
-
   const isDark = theme === 'asphalt' || theme === 'grayblue';
 
   // 4개 색상 모드별 포인트 톤
   let accentColor = '#D4CEBF';
   let badgeColor = 'bg-[#efede3]/15 text-[#efede3]';
-  let borderLine = isDark ? 'border-white/10' : 'border-stone-200';
-  let quoteBorder = isDark ? 'border-[#efede3]/50 text-stone-200 bg-white/5' : 'border-[#302f2c] text-stone-700 bg-black/5';
+  let borderLine = isDark ? 'border-white/10' : 'border-stone-300';
+  let quoteBorder = isDark
+    ? 'border-[#efede3]/60 text-stone-200 bg-white/5'
+    : 'border-[#302f2c]/70 text-stone-800 bg-black/5';
+  let codeBlockStyle = isDark
+    ? 'bg-[#181716] border-white/10 text-stone-200'
+    : 'bg-[#E7E4D8] border-stone-300 text-stone-900';
 
   if (theme === 'asphalt') {
     accentColor = '#efede3';
     badgeColor = 'bg-[#efede3]/20 text-[#efede3]';
     quoteBorder = 'border-[#efede3]/60 text-[#efede3] bg-[#efede3]/5';
+    codeBlockStyle = 'bg-[#232220] border-white/10 text-[#efede3]';
   } else if (theme === 'grayblue') {
     accentColor = '#9EADC8';
     badgeColor = 'bg-[#9EADC8]/20 text-[#C9D4E8]';
     quoteBorder = 'border-[#9EADC8]/60 text-stone-200 bg-[#9EADC8]/5';
+    codeBlockStyle = 'bg-[#1C212A] border-white/10 text-[#f0f3f8]';
   } else if (theme === 'paper') {
     accentColor = '#302f2c';
     badgeColor = 'bg-[#302f2c]/15 text-[#302f2c]';
     quoteBorder = 'border-[#302f2c]/70 text-[#302f2c] bg-[#302f2c]/5';
+    codeBlockStyle = 'bg-[#E3DFD0] border-stone-300 text-[#302f2c]';
   } else if (theme === 'milk') {
     accentColor = '#2b323f';
     badgeColor = 'bg-[#2b323f]/10 text-[#2b323f]';
     quoteBorder = 'border-[#2b323f]/60 text-[#2b323f] bg-[#2b323f]/5';
+    codeBlockStyle = 'bg-[#EDE9E1] border-stone-200 text-[#2b323f]';
   }
 
   const textColor = isDark ? 'text-stone-100' : 'text-[#302f2c]';
 
+  // Parse lines into structured blocks (handling multi-line codeblocks and blockquotes)
+  const rawLines = content.split('\n');
+  const blocks: BlockType[] = [];
+
+  let i = 0;
+  while (i < rawLines.length) {
+    const rawLine = rawLines[i];
+    const trimmed = rawLine.trim();
+
+    // 0. Ignore HTML comment blocks like [//]: # (...)
+    if (trimmed.startsWith('[//]: #') || trimmed.startsWith('<!--')) {
+      i++;
+      continue;
+    }
+
+    // 1. Code Block: ```lang ... ```
+    if (trimmed.startsWith('```')) {
+      const language = trimmed.replace(/^```/, '').trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < rawLines.length && !rawLines[i].trim().startsWith('```')) {
+        codeLines.push(rawLines[i]);
+        i++;
+      }
+      if (i < rawLines.length && rawLines[i].trim().startsWith('```')) {
+        i++; // skip closing ```
+      }
+      blocks.push({
+        type: 'codeblock',
+        language,
+        content: codeLines.join('\n'),
+      });
+      continue;
+    }
+
+    // 2. Blockquote: Consecutive lines starting with >
+    if (trimmed.startsWith('>')) {
+      const quoteLines: string[] = [];
+      while (i < rawLines.length && rawLines[i].trim().startsWith('>')) {
+        quoteLines.push(rawLines[i].trim().replace(/^>\s*/, ''));
+        i++;
+      }
+      blocks.push({
+        type: 'blockquote',
+        lines: quoteLines,
+      });
+      continue;
+    }
+
+    // 3. Image markdown: ![alt](url)
+    const imgMatch = trimmed.match(/^!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)$/);
+    if (imgMatch) {
+      blocks.push({
+        type: 'image',
+        alt: imgMatch[1],
+        src: imgMatch[2],
+      });
+      i++;
+      continue;
+    }
+
+    // 4. Dividers: --- or *** or ___
+    if (/^[-=_*]{3,}$/.test(trimmed)) {
+      blocks.push({ type: 'divider' });
+      i++;
+      continue;
+    }
+
+    // 5. Section badges
+    if (trimmed.includes('BEST COMMENTS') || trimmed.includes('베스트 댓글')) {
+      blocks.push({ type: 'best_badge', text: '💡 BEST COMMENTS' });
+      i++;
+      continue;
+    }
+    if (trimmed.includes('NORMAL COMMENTS') || trimmed.includes('일반 댓글')) {
+      blocks.push({ type: 'comment_badge', text: '💬 COMMENTS' });
+      i++;
+      continue;
+    }
+
+    // 6. Nickname line
+    const nicknameMatch = trimmed.match(/^\*{0,2}\[닉네임:\s*([^\]]+)\]\*{0,2}/);
+    if (nicknameMatch) {
+      blocks.push({ type: 'nickname', name: nicknameMatch[1].trim() });
+      i++;
+      continue;
+    }
+
+    // 7. Headings
+    if (trimmed.startsWith('##### ')) {
+      blocks.push({ type: 'h5', text: trimmed.replace(/^#####\s+/, '') });
+      i++;
+      continue;
+    }
+    if (trimmed.startsWith('#### ')) {
+      blocks.push({ type: 'h4', text: trimmed.replace(/^####\s+/, '') });
+      i++;
+      continue;
+    }
+    if (trimmed.startsWith('### ')) {
+      blocks.push({ type: 'h3', text: trimmed.replace(/^###\s+/, '') });
+      i++;
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      blocks.push({ type: 'h2', text: trimmed.replace(/^##\s+/, '') });
+      i++;
+      continue;
+    }
+    if (trimmed.startsWith('# ')) {
+      blocks.push({ type: 'h1', text: trimmed.replace(/^#\s+/, '') });
+      i++;
+      continue;
+    }
+
+    // 8. Empty lines
+    if (!trimmed) {
+      blocks.push({ type: 'empty' });
+      i++;
+      continue;
+    }
+
+    // 9. Standard paragraph
+    blocks.push({ type: 'p', text: rawLine });
+    i++;
+  }
+
   return (
-    <div className={`space-y-2.5 font-sans ${textColor} ${sizeClasses.base} select-text`}>
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
+    <div className={`space-y-3 font-sans ${textColor} ${sizeClasses.base} select-text`}>
+      {blocks.map((block, idx) => {
+        switch (block.type) {
+          case 'empty':
+            return <div key={idx} className="h-2" />;
 
-        // Empty line
-        if (!trimmed) {
-          return <div key={idx} className="h-2" />;
-        }
-
-        // Section headings (e.g. | 💡 BEST COMMENTS |)
-        if (trimmed.includes('BEST COMMENTS') || trimmed.includes('베스트 댓글')) {
-          return (
-            <div key={idx} className="pt-2 pb-1 select-text">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 font-bold text-xs rounded-md tracking-wider ${badgeColor}`}>
-                💡 BEST COMMENTS
-              </span>
-            </div>
-          );
-        }
-
-        if (trimmed.includes('NORMAL COMMENTS') || trimmed.includes('일반 댓글')) {
-          return (
-            <div key={idx} className="pt-4 pb-1 select-text">
-              <span
-                className={`inline-flex items-center gap-1.5 px-3 py-1 font-bold text-xs rounded-md tracking-wider ${
-                  isDark ? 'bg-white/10 text-stone-300' : 'bg-black/10 text-stone-700'
-                }`}
+          case 'codeblock':
+            return (
+              <div
+                key={idx}
+                className={`my-3 p-3.5 sm:p-4 rounded-xl border font-mono text-xs overflow-x-auto shadow-2xs select-text ${codeBlockStyle}`}
               >
-                💬 COMMENTS
-              </span>
-            </div>
-          );
-        }
+                {block.language && (
+                  <div className="text-[10px] uppercase font-bold tracking-wider opacity-60 mb-2 border-b border-current/15 pb-1">
+                    {block.language}
+                  </div>
+                )}
+                <pre className="whitespace-pre-wrap font-mono leading-relaxed">
+                  {block.content}
+                </pre>
+              </div>
+            );
 
-        // Dividers
-        if (/^[-=_|]{3,}$/.test(trimmed)) {
-          return <hr key={idx} className={`my-3 ${borderLine}`} />;
-        }
+          case 'blockquote':
+            return (
+              <blockquote
+                key={idx}
+                className={`border-l-3 pl-4 py-2 my-2 rounded-r select-text space-y-1 ${quoteBorder}`}
+              >
+                {block.lines.map((qLine, qIdx) => (
+                  <p key={qIdx} className="break-words leading-relaxed font-serif tracking-normal">
+                    {renderLineWithHighlightsAndMarkdown(
+                      qLine,
+                      highlights,
+                      isDark,
+                      onRemoveHighlight
+                    )}
+                  </p>
+                ))}
+              </blockquote>
+            );
 
-        // Nickname line: **[닉네임: 렌프로스터주접단]**
-        const nicknameMatch = trimmed.match(/^\*{0,2}\[닉네임:\s*([^\]]+)\]\*{0,2}/);
-        if (nicknameMatch) {
-          return (
-            <div
-              key={idx}
-              className="mt-3 font-semibold flex items-center gap-2 select-text"
-              style={{ color: accentColor }}
-            >
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: accentColor }}
-              />
-              <span>{nicknameMatch[1].trim()}</span>
-            </div>
-          );
-        }
+          case 'image':
+            return (
+              <div key={idx} className="my-3 rounded-xl overflow-hidden border border-black/10 shadow-xs max-w-md mx-auto">
+                <img
+                  src={block.src}
+                  alt={block.alt || '이미지'}
+                  className="w-full h-auto object-cover max-h-[480px]"
+                  loading="lazy"
+                  onError={(e) => {
+                    // fallback if broken
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+                {block.alt && (
+                  <div className="px-3 py-1.5 text-[11px] text-center opacity-65 font-medium bg-black/5">
+                    {block.alt}
+                  </div>
+                )}
+              </div>
+            );
 
-        // Headings
-        if (trimmed.startsWith('##### ')) {
-          return (
-            <h5 key={idx} className={`font-semibold mt-2 select-text opacity-85 ${sizeClasses.sub}`}>
-              {renderLineWithHighlightsAndMarkdown(trimmed.replace(/^#####\s+/, ''), highlights, isDark, onRemoveHighlight)}
-            </h5>
-          );
-        }
-        if (trimmed.startsWith('#### ')) {
-          return (
-            <h4 key={idx} className={`font-semibold mt-2 select-text font-bold ${sizeClasses.heading3}`}>
-              {renderLineWithHighlightsAndMarkdown(trimmed.replace(/^####\s+/, ''), highlights, isDark, onRemoveHighlight)}
-            </h4>
-          );
-        }
-        if (trimmed.startsWith('### ')) {
-          return (
-            <h3
-              key={idx}
-              className={`font-bold mt-3 select-text ${sizeClasses.heading3}`}
-              style={{ color: accentColor }}
-            >
-              {renderLineWithHighlightsAndMarkdown(trimmed.replace(/^###\s+/, ''), highlights, isDark, onRemoveHighlight)}
-            </h3>
-          );
-        }
-        if (trimmed.startsWith('## ')) {
-          return (
-            <h2
-              key={idx}
-              className={`font-bold mt-3 select-text ${sizeClasses.heading2}`}
-              style={{ color: accentColor }}
-            >
-              {renderLineWithHighlightsAndMarkdown(trimmed.replace(/^##\s+/, ''), highlights, isDark, onRemoveHighlight)}
-            </h2>
-          );
-        }
-        if (trimmed.startsWith('# ')) {
-          return (
-            <h1
-              key={idx}
-              className={`font-extrabold mt-3 pb-1 border-b select-text ${borderLine} ${sizeClasses.heading1}`}
-            >
-              {renderLineWithHighlightsAndMarkdown(trimmed.replace(/^#\s+/, ''), highlights, isDark, onRemoveHighlight)}
-            </h1>
-          );
-        }
+          case 'divider':
+            return <hr key={idx} className={`my-4 ${borderLine}`} />;
 
-        // Blockquote
-        if (trimmed.startsWith('>')) {
-          return (
-            <blockquote
-              key={idx}
-              className={`border-l-2 pl-3 py-1 my-2 rounded-r select-text ${quoteBorder}`}
-            >
-              {renderLineWithHighlightsAndMarkdown(trimmed.replace(/^>\s*/, ''), highlights, isDark, onRemoveHighlight)}
-            </blockquote>
-          );
-        }
+          case 'best_badge':
+            return (
+              <div key={idx} className="pt-2 pb-1 select-text">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 font-bold text-xs rounded-md tracking-wider ${badgeColor}`}>
+                  {block.text}
+                </span>
+              </div>
+            );
 
-        // Normal paragraph
-        return (
-          <p key={idx} className="break-words select-text">
-            {renderLineWithHighlightsAndMarkdown(line, highlights, isDark, onRemoveHighlight)}
-          </p>
-        );
+          case 'comment_badge':
+            return (
+              <div key={idx} className="pt-4 pb-1 select-text">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 font-bold text-xs rounded-md tracking-wider ${
+                    isDark ? 'bg-white/10 text-stone-300' : 'bg-black/10 text-stone-700'
+                  }`}
+                >
+                  {block.text}
+                </span>
+              </div>
+            );
+
+          case 'nickname':
+            return (
+              <div
+                key={idx}
+                className="mt-3 font-semibold flex items-center gap-2 select-text"
+                style={{ color: accentColor }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: accentColor }}
+                />
+                <span>{block.name}</span>
+              </div>
+            );
+
+          case 'h1':
+            return (
+              <h1
+                key={idx}
+                className={`font-extrabold mt-4 pb-1.5 border-b select-text ${borderLine} ${sizeClasses.heading1}`}
+              >
+                {renderLineWithHighlightsAndMarkdown(block.text, highlights, isDark, onRemoveHighlight)}
+              </h1>
+            );
+
+          case 'h2':
+            return (
+              <h2
+                key={idx}
+                className={`font-bold mt-3.5 select-text ${sizeClasses.heading2}`}
+                style={{ color: accentColor }}
+              >
+                {renderLineWithHighlightsAndMarkdown(block.text, highlights, isDark, onRemoveHighlight)}
+              </h2>
+            );
+
+          case 'h3':
+            return (
+              <h3
+                key={idx}
+                className={`font-bold mt-3 select-text ${sizeClasses.heading3}`}
+                style={{ color: accentColor }}
+              >
+                {renderLineWithHighlightsAndMarkdown(block.text, highlights, isDark, onRemoveHighlight)}
+              </h3>
+            );
+
+          case 'h4':
+            return (
+              <h4 key={idx} className={`font-semibold mt-2 select-text font-bold ${sizeClasses.heading3}`}>
+                {renderLineWithHighlightsAndMarkdown(block.text, highlights, isDark, onRemoveHighlight)}
+              </h4>
+            );
+
+          case 'h5':
+            return (
+              <h5 key={idx} className={`font-semibold mt-2 select-text opacity-85 ${sizeClasses.sub}`}>
+                {renderLineWithHighlightsAndMarkdown(block.text, highlights, isDark, onRemoveHighlight)}
+              </h5>
+            );
+
+          case 'p':
+          default:
+            return (
+              <p key={idx} className="break-words select-text leading-relaxed">
+                {renderLineWithHighlightsAndMarkdown(block.text, highlights, isDark, onRemoveHighlight)}
+              </p>
+            );
+        }
       })}
     </div>
   );
 };
 
 // Color styles for highlighter
-export const HIGHLIGHT_STYLES: Record<HighlightColor, { bg: string; darkBg: string; border: string; label: string; dot: string; markTag: string }> = {
+export const HIGHLIGHT_STYLES: Record<
+  HighlightColor,
+  { bg: string; darkBg: string; border: string; label: string; dot: string; markTag: string }
+> = {
   yellow: {
     bg: 'bg-amber-300/40 text-stone-900',
     darkBg: 'bg-amber-400/25 text-amber-200 border-amber-400/80',
@@ -344,19 +531,34 @@ function renderLineWithHighlightsAndMarkdown(
   return nodes;
 }
 
+/**
+ * Enhanced inline markdown parser that supports:
+ * - `inline code`
+ * - **bold**
+ * - *italic* (with elegant serif styling!)
+ * - ~~strikethrough~~
+ * - ==highlight==
+ * - [//]: # (hidden comments)
+ */
 function renderInlineMarkdown(text: string, isDark: boolean): React.ReactNode {
+  // First strip out any hidden comment blocks in inline text
+  const cleaned = text.replace(/\[\/\/\]:\s*#[^\n]*/g, '');
+
   const parts: React.ReactNode[] = [];
-  const regex = /(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|==(?:([grb]):)?([^=]+)==)/g;
+  // Order matters: match code, then bold, then italic, then strike, then mark
+  const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|==(?:([grb]):)?([^=]+)==)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let key = 0;
 
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = regex.exec(cleaned)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(text.substring(lastIndex, match.index));
+      parts.push(cleaned.substring(lastIndex, match.index));
     }
     const token = match[0];
+
     if (token.startsWith('`') && token.endsWith('`')) {
+      // Inline code
       parts.push(
         <code
           key={key++}
@@ -370,18 +572,33 @@ function renderInlineMarkdown(text: string, isDark: boolean): React.ReactNode {
         </code>
       );
     } else if (token.startsWith('**') && token.endsWith('**')) {
+      // Bold
       parts.push(
-        <strong key={key++} className="font-semibold">
+        <strong key={key++} className="font-bold tracking-tight">
           {token.slice(2, -2)}
         </strong>
       );
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      // Italic (이탤릭체 - 소설/캐릭터 지문 및 서술을 위한 감성 이탤릭 폰트 스타일링)
+      parts.push(
+        <em
+          key={key++}
+          className={`italic font-serif tracking-wide ${
+            isDark ? 'text-stone-300 opacity-95' : 'text-stone-700 opacity-90'
+          }`}
+        >
+          {token.slice(1, -1)}
+        </em>
+      );
     } else if (token.startsWith('~~') && token.endsWith('~~')) {
+      // Strikethrough
       parts.push(
         <del key={key++} className="line-through opacity-60">
           {token.slice(2, -2)}
         </del>
       );
     } else if (token.startsWith('==') && token.endsWith('==')) {
+      // Highlighter tags
       const colorCode = match[2];
       const innerText = match[3];
       let color: HighlightColor = 'yellow';
@@ -400,9 +617,9 @@ function renderInlineMarkdown(text: string, isDark: boolean): React.ReactNode {
     lastIndex = regex.lastIndex;
   }
 
-  if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
+  if (lastIndex < cleaned.length) {
+    parts.push(cleaned.substring(lastIndex));
   }
 
-  return parts.length > 0 ? parts : text;
+  return parts.length > 0 ? parts : cleaned;
 }

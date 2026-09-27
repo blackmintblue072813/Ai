@@ -26,6 +26,9 @@ import {
   Highlighter,
   Type,
   Bold,
+  Italic,
+  Code,
+  Quote,
   Eye,
   Settings,
   Palette,
@@ -310,6 +313,71 @@ export default function App() {
       } else {
         textarea.setSelectionRange(start + 2, start + 2 + '굵은 글씨'.length);
       }
+    }, 10);
+  };
+
+  const handleInsertItalic = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = inputContent.substring(start, end);
+
+    const replacement = selected ? `*${selected}*` : '*기울임 이탤릭체*';
+    const nextContent = inputContent.substring(0, start) + replacement + inputContent.substring(end);
+    setInputContent(nextContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      if (selected) {
+        textarea.setSelectionRange(start + 1, end + 1);
+      } else {
+        textarea.setSelectionRange(start + 1, start + 1 + '기울임 이탤릭체'.length);
+      }
+    }, 10);
+  };
+
+  const handleInsertQuote = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = inputContent.substring(start, end);
+
+    const replacement = selected
+      ? selected
+          .split('\n')
+          .map((line) => `> ${line}`)
+          .join('\n')
+      : '> 인용문 내용';
+    const nextContent = inputContent.substring(0, start) + replacement + inputContent.substring(end);
+    setInputContent(nextContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start, start + replacement.length);
+    }, 10);
+  };
+
+  const handleInsertCodeBlock = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = inputContent.substring(start, end);
+
+    const replacement = selected
+      ? `\`\`\`\n${selected}\n\`\`\``
+      : '```\n😺 캐릭터 대화 내용 또는 코드블럭\n```';
+    const nextContent = inputContent.substring(0, start) + replacement + inputContent.substring(end);
+    setInputContent(nextContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + 4, start + 4 + (selected ? selected.length : 21));
     }, 10);
   };
 
@@ -687,7 +755,9 @@ export default function App() {
                     style={{
                       backgroundColor: isSelected ? themeConfig.activeItemBg : 'transparent',
                       borderLeftColor: isSelected ? themeConfig.primary : 'transparent',
-                      borderColor: themeConfig.borderLight,
+                      borderTopColor: themeConfig.borderLight,
+                      borderRightColor: themeConfig.borderLight,
+                      borderBottomColor: themeConfig.borderLight,
                     }}
                     className={`p-3.5 cursor-pointer transition-colors text-left select-none relative group border-l-3 hover:opacity-90 ${
                       !isSelected && (isDark ? 'hover:bg-white/5' : 'hover:bg-black/5')
@@ -1279,6 +1349,51 @@ export default function App() {
                     >
                       <Bold className="w-3 h-3" />
                       <span>굵게</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleInsertItalic}
+                      style={{
+                        backgroundColor: themeConfig.bgSurface,
+                        borderColor: themeConfig.border,
+                        color: themeConfig.textPrimary,
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 border rounded text-xs font-serif italic cursor-pointer transition-colors hover:opacity-80"
+                      title="기울임 이탤릭체 (*텍스트*)"
+                    >
+                      <Italic className="w-3 h-3" />
+                      <span>이탤릭</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleInsertQuote}
+                      style={{
+                        backgroundColor: themeConfig.bgSurface,
+                        borderColor: themeConfig.border,
+                        color: themeConfig.textPrimary,
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 border rounded text-xs font-medium cursor-pointer transition-colors hover:opacity-80"
+                      title="인용구 (> 텍스트)"
+                    >
+                      <Quote className="w-3 h-3" />
+                      <span>인용</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleInsertCodeBlock}
+                      style={{
+                        backgroundColor: themeConfig.bgSurface,
+                        borderColor: themeConfig.border,
+                        color: themeConfig.textPrimary,
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 border rounded text-xs font-mono cursor-pointer transition-colors hover:opacity-80"
+                      title="코드블럭/대화상자 (```내용```)"
+                    >
+                      <Code className="w-3 h-3" />
+                      <span>대화상자</span>
                     </button>
                   </div>
 
