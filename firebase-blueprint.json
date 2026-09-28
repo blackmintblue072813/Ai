@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile representation in Firestore",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "A category folder for grouping logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "An AI chat log or character dialogue entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "folderId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "content": { "type": "string", "maxLength": 500000 },
+        "isFavorite": { "type": "boolean" },
+        "fontSize": { "type": "string", "enum": ["xs", "sm", "base", "lg"] },
+        "highlights": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "folderId", "title", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile info document"
+    },
+    "/users/{userId}/folders/{folderId}": {
+      "schema": "Folder",
+      "description": "User's categorization folders"
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "Log",
+      "description": "User's chat and character dialogue logs"
+    }
+  }
+}

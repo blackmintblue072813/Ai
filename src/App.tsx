@@ -10,6 +10,19 @@ import {
 } from './utils/storage';
 import { FormattedLog, FONT_SIZE_CLASSES } from './components/FormattedLog';
 import {
+  auth,
+  signInWithGoogle,
+  signOutUser,
+  testConnection,
+  saveLogToCloud,
+  deleteLogFromCloud,
+  deleteFolderFromCloud,
+  syncFoldersToCloud,
+  subscribeToUserFolders,
+  subscribeToUserLogs,
+} from './services/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import {
   Search,
   Plus,
   Trash2,
@@ -32,6 +45,10 @@ import {
   Eye,
   Settings,
   Palette,
+  Cloud,
+  CloudCheck,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 
 // 업로드해주신 이미지의 정확한 4가지 색상:
@@ -138,9 +155,69 @@ const THEMES: Record<ThemeMode, ThemeConfig> = {
 };
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+
   const [folders, setFolders] = useState<Folder[]>(getStoredFolders);
   const [logs, setLogs] = useState<LogEntry[]>(getStoredLogs);
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>(getStoredTheme);
+
+  // Connection test on mount
+  useEffect(() => {
+    testConnection();
+  }, []);
+
+  // Firebase Auth Listener & real-time Firestore sync
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // When logged in, subscribe to user's cloud folders & logs in Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+
+    setIsCloudSyncing(true);
+
+    const unsubFolders = subscribeToUserFolders(
+      currentUser.uid,
+      (cloudFolders) => {
+        if (cloudFolders.length > 0) {
+          setFolders(cloudFolders);
+        } else {
+          // If user has no cloud folders yet, seed with current local folders
+          syncFoldersToCloud(currentUser.uid, folders);
+        }
+      },
+      (err) => console.warn('Cloud folders listener:', err)
+    );
+
+    const unsubLogs = subscribeToUserLogs(
+      currentUser.uid,
+      (cloudLogs) => {
+        setIsCloudSyncing(false);
+        if (cloudLogs.length > 0) {
+          setLogs(cloudLogs);
+        } else if (logs.length > 0) {
+          // Seed initial local logs to cloud
+          logs.forEach((l) => saveLogToCloud(currentUser.uid, l));
+        }
+      },
+      (err) => {
+        setIsCloudSyncing(false);
+        console.warn('Cloud logs listener:', err);
+      }
+    );
+
+    return () => {
+      unsubFolders();
+      unsubLogs();
+    };
+  }, [currentUser?.uid]);
 
   // 'all' | 'favorites' | folderId
   const [selectedFolderId, setSelectedFolderId] = useState<string>('all');
@@ -195,9 +272,16 @@ export default function App() {
   const handleToggleFavorite = (logId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setLogs((prev) =>
-      prev.map((log) =>
-        log.id === logId ? { ...log, isFavorite: !log.isFavorite } : log
-      )
+      prev.map((log) => {
+        if (log.id === logId) {
+          const updated = { ...log, isFavorite: !log.isFavorite };
+          if (currentUser) {
+            saveLogToCloud(currentUser.uid, updated);
+          }
+          return updated;
+        }
+        return log;
+      })
     );
   };
 
@@ -387,20 +471,25 @@ export default function App() {
 
     if (editingLogId) {
       // Update
-      const updated = logs.map((l) =>
-        l.id === editingLogId
-          ? {
-              ...l,
-              title: inputTitle.trim(),
-              folderId: inputFolderId || folders[0]?.id || 'default',
-              content: inputContent.trim(),
-              isFavorite: inputIsFavorite,
-              fontSize: inputFontSize,
-              updatedAt: new Date().toISOString(),
-            }
-          : l
-      );
+      const existing = logs.find((l) => l.id === editingLogId);
+      const updatedLog: LogEntry = {
+        id: editingLogId,
+        title: inputTitle.trim(),
+        folderId: inputFolderId || folders[0]?.id || 'default',
+        content: inputContent.trim(),
+        isFavorite: inputIsFavorite,
+        fontSize: inputFontSize,
+        highlights: existing?.highlights || [],
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const updated = logs.map((l) => (l.id === editingLogId ? updatedLog : l));
       setLogs(updated);
+
+      if (currentUser) {
+        saveLogToCloud(currentUser.uid, updatedLog);
+      }
     } else {
       // Create
       const newLog: LogEntry = {
@@ -416,6 +505,10 @@ export default function App() {
       };
       setLogs([newLog, ...logs]);
       setSelectedLogId(newLog.id);
+
+      if (currentUser) {
+        saveLogToCloud(currentUser.uid, newLog);
+      }
     }
 
     setIsEditorOpen(false);
@@ -428,6 +521,9 @@ export default function App() {
     if (selectedLogId === id) {
       setSelectedLogId(remaining[0]?.id || null);
       setIsMobileDetailOpen(false);
+    }
+    if (currentUser) {
+      deleteLogFromCloud(currentUser.uid, id);
     }
   };
 
@@ -445,8 +541,12 @@ export default function App() {
       id: `folder-${Date.now()}`,
       name: newFolderName.trim(),
     };
-    setFolders([...folders, newFolder]);
+    const nextFolders = [...folders, newFolder];
+    setFolders(nextFolders);
     setNewFolderName('');
+    if (currentUser) {
+      syncFoldersToCloud(currentUser.uid, nextFolders);
+    }
   };
 
   const handleDeleteFolder = (folderId: string) => {
@@ -458,10 +558,16 @@ export default function App() {
     const fallback = folders.find((f) => f.id !== folderId);
     if (!fallback) return;
 
-    setLogs(logs.map((l) => (l.folderId === folderId ? { ...l, folderId: fallback.id } : l)));
-    setFolders(folders.filter((f) => f.id !== folderId));
+    const nextLogs = logs.map((l) => (l.folderId === folderId ? { ...l, folderId: fallback.id } : l));
+    const nextFolders = folders.filter((f) => f.id !== folderId);
+    setLogs(nextLogs);
+    setFolders(nextFolders);
     if (selectedFolderId === folderId) {
       setSelectedFolderId('all');
+    }
+    if (currentUser) {
+      deleteFolderFromCloud(currentUser.uid, folderId);
+      nextLogs.forEach((l) => saveLogToCloud(currentUser.uid, l));
     }
   };
 
@@ -544,6 +650,49 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Cloud Sync & Firebase Auth Status */}
+          {currentUser ? (
+            <div
+              style={{
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.03)',
+                borderColor: themeConfig.border,
+              }}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-lg border text-xs"
+            >
+              <div className="flex items-center gap-1.5" title="Firebase 클라우드 실시간 동기화 활성">
+                <Cloud className={`w-3.5 h-3.5 text-emerald-400 ${isCloudSyncing ? 'animate-pulse' : ''}`} />
+                <span className="hidden lg:inline text-[11px] font-medium" style={{ color: themeConfig.textSecondary }}>
+                  {currentUser.displayName || currentUser.email?.split('@')[0]}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => signOutUser()}
+                style={{ color: themeConfig.textMuted }}
+                className="hover:text-rose-400 p-0.5 rounded transition-colors cursor-pointer"
+                title="로그아웃"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => signInWithGoogle()}
+              style={{
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+                color: themeConfig.textPrimary,
+                borderColor: themeConfig.border,
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer hover:opacity-85"
+              title="Google 계정으로 로그인하여 로그와 폴더를 무료 Firebase 클라우드에 영구 백업"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">구글 로그인 (클라우드 백업)</span>
+              <span className="sm:hidden">로그인</span>
+            </button>
+          )}
+
           {/* Settings (Theme Selector) Button */}
           <button
             onClick={() => setIsSettingsModalOpen(true)}
