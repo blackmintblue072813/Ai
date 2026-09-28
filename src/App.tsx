@@ -621,11 +621,11 @@ export default function App() {
           >
             AI
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1
                 style={{ color: themeConfig.textPrimary }}
-                className="font-bold text-sm tracking-tight"
+                className="font-bold text-sm tracking-tight whitespace-nowrap"
               >
                 AI 채팅 로그 보관소
               </h1>
@@ -649,7 +649,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Cloud Sync & Firebase Auth Status */}
           {currentUser ? (
             <div
@@ -657,11 +657,11 @@ export default function App() {
                 backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.03)',
                 borderColor: themeConfig.border,
               }}
-              className="flex items-center gap-2 px-2.5 py-1 rounded-lg border text-xs"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs whitespace-nowrap"
             >
-              <div className="flex items-center gap-1.5" title="Firebase 클라우드 실시간 동기화 활성">
+              <div className="flex items-center gap-1" title="Firebase 클라우드 실시간 동기화 활성">
                 <Cloud className={`w-3.5 h-3.5 text-emerald-400 ${isCloudSyncing ? 'animate-pulse' : ''}`} />
-                <span className="hidden lg:inline text-[11px] font-medium" style={{ color: themeConfig.textSecondary }}>
+                <span className="hidden md:inline text-[11px] font-medium" style={{ color: themeConfig.textSecondary }}>
                   {currentUser.displayName || currentUser.email?.split('@')[0]}
                 </span>
               </div>
@@ -684,12 +684,11 @@ export default function App() {
                 color: themeConfig.textPrimary,
                 borderColor: themeConfig.border,
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer hover:opacity-85"
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer hover:opacity-85 whitespace-nowrap"
               title="Google 계정으로 로그인하여 로그와 폴더를 무료 Firebase 클라우드에 영구 백업"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">구글 로그인 (클라우드 백업)</span>
-              <span className="sm:hidden">로그인</span>
+              <span className="hidden md:inline">구글 로그인 (클라우드 백업)</span>
             </button>
           )}
 
@@ -701,11 +700,11 @@ export default function App() {
               color: themeConfig.textPrimary,
               borderColor: themeConfig.border,
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer hover:opacity-85"
+            className="flex items-center justify-center gap-1.5 p-2 sm:px-2.5 sm:py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer hover:opacity-85 whitespace-nowrap"
             title="색상 테마 변경"
           >
             <Palette className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">테마 설정</span>
+            <span className="hidden sm:inline">테마</span>
           </button>
 
           {/* Folder Management Button */}
@@ -716,10 +715,11 @@ export default function App() {
               color: themeConfig.textSecondary,
               borderColor: themeConfig.border,
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer hover:opacity-85"
+            className="flex items-center justify-center gap-1.5 p-2 sm:px-2.5 sm:py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer hover:opacity-85 whitespace-nowrap"
+            title="폴더 관리"
           >
             <FolderPlus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">폴더 관리</span>
+            <span className="hidden sm:inline">폴더</span>
           </button>
 
           {/* New Log Button */}
@@ -729,10 +729,10 @@ export default function App() {
               backgroundColor: themeConfig.primary,
               color: themeConfig.primaryText,
             }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-opacity hover:opacity-90 shadow-xs cursor-pointer"
+            className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg transition-opacity hover:opacity-90 shadow-xs cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            <span>새 로그 저장</span>
+            <span>새 로그</span>
           </button>
         </div>
       </header>
