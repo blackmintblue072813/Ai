@@ -495,7 +495,7 @@ export default function App() {
         backgroundColor: themeConfig.bgApp,
         color: themeConfig.textPrimary,
       }}
-      className="flex flex-col h-screen w-screen font-sans transition-colors duration-150 select-text"
+      className="flex flex-col h-screen w-screen transition-colors duration-150 select-text"
     >
       {/* Top Header */}
       <header
@@ -506,14 +506,19 @@ export default function App() {
         className="h-14 border-b px-4 sm:px-6 flex items-center justify-between gap-4 shrink-0 shadow-xs"
       >
         <div className="flex items-center gap-3">
+          {/* Cover Character Profile / Logo */}
           <div
             style={{
-              backgroundColor: themeConfig.primary,
-              color: themeConfig.primaryText,
+              borderColor: themeConfig.border,
             }}
-            className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs tracking-wider shadow-xs"
+            className="w-9 h-9 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 shadow-xs bg-white/10"
           >
-            AI
+            <img
+              src="/src/assets/images/site_cover_character_1790625671606.jpg"
+              alt="사이트 캐릭터 표지"
+              className="w-full h-full object-cover object-top"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -972,15 +977,27 @@ export default function App() {
           ) : (
             <div
               style={{ color: themeConfig.textMuted }}
-              className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3"
+              className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4"
             >
-              <FileText className="w-10 h-10 opacity-40" />
-              <div className="text-sm font-medium" style={{ color: themeConfig.textPrimary }}>
-                선택된 로그가 없습니다.
+              <div
+                style={{ borderColor: themeConfig.border }}
+                className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl overflow-hidden border shadow-md bg-white/5 p-1"
+              >
+                <img
+                  src="/src/assets/images/site_cover_character_1790625671606.jpg"
+                  alt="보관소 메인 캐릭터 표지"
+                  className="w-full h-full object-cover rounded-xl"
+                  referrerPolicy="no-referrer"
+                />
               </div>
-              <p className="text-xs">
-                목록에서 읽고 싶은 대화 로그를 선택하거나 '새 로그 저장'을 눌러 추가하세요.
-              </p>
+              <div className="space-y-1">
+                <div className="text-base font-bold" style={{ color: themeConfig.textPrimary }}>
+                  선택된 로그가 없습니다
+                </div>
+                <p className="text-xs max-w-sm leading-relaxed">
+                  목록에서 읽고 싶은 대화 로그를 선택하거나, 상단의 <strong>[새 로그 저장]</strong>을 눌러 소중한 대화를 기록해보세요.
+                </p>
+              </div>
             </div>
           )}
         </main>

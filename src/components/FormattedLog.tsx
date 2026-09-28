@@ -239,7 +239,7 @@ export const FormattedLog: React.FC<FormattedLogProps> = ({
   }
 
   return (
-    <div className={`space-y-3 font-sans ${textColor} ${sizeClasses.base} select-text`}>
+    <div className={`space-y-3 ${textColor} ${sizeClasses.base} select-text`}>
       {blocks.map((block, idx) => {
         switch (block.type) {
           case 'empty':
