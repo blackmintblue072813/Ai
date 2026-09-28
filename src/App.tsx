@@ -7,6 +7,8 @@ import {
   saveStoredLogs,
   getStoredTheme,
   saveStoredTheme,
+  backupOfflineData,
+  getOfflineBackupData,
 } from './utils/storage';
 import { FormattedLog, FONT_SIZE_CLASSES } from './components/FormattedLog';
 import {
@@ -14,6 +16,7 @@ import {
   signInWithGoogle,
   signOutUser,
   testConnection,
+  checkRedirectAuth,
   saveLogToCloud,
   deleteLogFromCloud,
   deleteFolderFromCloud,
@@ -163,31 +166,75 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>(getStoredLogs);
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>(getStoredTheme);
 
-  // Connection test on mount
+  // Connection test on mount & check redirect auth
   useEffect(() => {
     testConnection();
+    checkRedirectAuth().then((user) => {
+      if (user) {
+        setCurrentUser(user);
+      }
+    });
   }, []);
 
   // Firebase Auth Listener & real-time Firestore sync
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // If logging out, preserve user's local state or restore from offline backup
+      if (!user && currentUser) {
+        const backup = getOfflineBackupData();
+        if (backup.logs.length > 0) {
+          setLogs((prev) => {
+            const map = new Map<string, LogEntry>();
+            prev.forEach((l) => map.set(l.id, l));
+            backup.logs.forEach((l) => {
+              if (!map.has(l.id)) map.set(l.id, l);
+            });
+            return Array.from(map.values());
+          });
+        }
+      }
       setCurrentUser(user);
       setIsAuthLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
-  // When logged in, subscribe to user's cloud folders & logs in Firestore
+  // When logged in, subscribe to user's cloud folders & logs in Firestore, merging local writings so nothing is ever lost
   useEffect(() => {
     if (!currentUser) return;
 
+    // Backup current local logs before doing any cloud sync
+    backupOfflineData(logs, folders);
     setIsCloudSyncing(true);
 
     const unsubFolders = subscribeToUserFolders(
       currentUser.uid,
       (cloudFolders) => {
+        // Read existing local folders from storage/state
+        const localFolders = getStoredFolders();
+        const backupData = getOfflineBackupData();
+        const allCandidates = [...folders, ...localFolders, ...backupData.folders];
+
         if (cloudFolders.length > 0) {
-          setFolders(cloudFolders);
+          // Merge: Keep all cloud folders and any local folders that don't exist in cloud yet
+          const folderMap = new Map<string, Folder>();
+          cloudFolders.forEach((f) => folderMap.set(f.id, f));
+
+          const unuploadedFolders: Folder[] = [];
+          allCandidates.forEach((f) => {
+            if (!folderMap.has(f.id)) {
+              folderMap.set(f.id, f);
+              unuploadedFolders.push(f);
+            }
+          });
+
+          const merged = Array.from(folderMap.values());
+          setFolders(merged);
+
+          // Upload any local folders to cloud so they are saved forever
+          if (unuploadedFolders.length > 0) {
+            syncFoldersToCloud(currentUser.uid, unuploadedFolders);
+          }
         } else {
           // If user has no cloud folders yet, seed with current local folders
           syncFoldersToCloud(currentUser.uid, folders);
@@ -200,11 +247,35 @@ export default function App() {
       currentUser.uid,
       (cloudLogs) => {
         setIsCloudSyncing(false);
-        if (cloudLogs.length > 0) {
-          setLogs(cloudLogs);
-        } else if (logs.length > 0) {
-          // Seed initial local logs to cloud
-          logs.forEach((l) => saveLogToCloud(currentUser.uid, l));
+        const localLogs = getStoredLogs();
+        const backupData = getOfflineBackupData();
+        const allCandidates = [...logs, ...localLogs, ...backupData.logs];
+
+        const logMap = new Map<string, LogEntry>();
+        // Cloud logs take base
+        cloudLogs.forEach((l) => logMap.set(l.id, l));
+
+        // Merge local/offline logs that are not yet on the cloud
+        const unuploadedLogs: LogEntry[] = [];
+        allCandidates.forEach((l) => {
+          if (!logMap.has(l.id)) {
+            logMap.set(l.id, l);
+            unuploadedLogs.push(l);
+          }
+        });
+
+        const mergedLogs = Array.from(logMap.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        setLogs(mergedLogs);
+        if (mergedLogs.length > 0 && (!selectedLogId || !mergedLogs.some((l) => l.id === selectedLogId))) {
+          setSelectedLogId(mergedLogs[0].id);
+        }
+
+        // Upload any local logs that were missing from the cloud immediately
+        if (unuploadedLogs.length > 0) {
+          unuploadedLogs.forEach((l) => saveLogToCloud(currentUser.uid, l));
         }
       },
       (err) => {
@@ -246,8 +317,35 @@ export default function App() {
   // Settings (Theme) Modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
+  // Auth Error State (e.g. auth/unauthorized-domain guide)
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   // Copy feedback
   const [copied, setCopied] = useState(false);
+
+  const handleSignIn = async () => {
+    setIsLoggingIn(true);
+    setAuthErrorMessage(null);
+    try {
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.error('Login action error:', err);
+      const code = err?.code || '';
+      if (code === 'auth/unauthorized-domain') {
+        const currentDomain = window.location.hostname;
+        setAuthErrorMessage(
+          `현재 웹사이트 도메인(${currentDomain})이 Firebase 인증 승인 도메인 목록에 등록되지 않아 발생했습니다.\n\n해결 방법: Firebase Console > Authentication > Settings(설정) > Authorized domains(승인된 도메인)에 "${currentDomain}"을 추가하시면 즉시 정상 작동합니다.`
+        );
+      } else if (code === 'auth/popup-blocked') {
+        setAuthErrorMessage('브라우저의 팝업 차단이 활성화되어 있습니다. 팝업 허용 후 다시 시도해 주세요.');
+      } else if (code !== 'auth/popup-closed-by-user') {
+        setAuthErrorMessage(`로그인 처리 중 오류가 발생했습니다 (${err?.message || code})`);
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   // Sync to localStorage
   useEffect(() => {
@@ -678,16 +776,17 @@ export default function App() {
           ) : (
             <button
               type="button"
-              onClick={() => signInWithGoogle()}
+              disabled={isLoggingIn}
+              onClick={handleSignIn}
               style={{
                 backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
                 color: themeConfig.textPrimary,
                 borderColor: themeConfig.border,
               }}
-              className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer hover:opacity-85 whitespace-nowrap"
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer hover:opacity-85 whitespace-nowrap disabled:opacity-50"
               title="Google 계정으로 로그인하여 로그와 폴더를 무료 Firebase 클라우드에 영구 백업"
             >
-              <LogIn className="w-3.5 h-3.5" />
+              <LogIn className={`w-3.5 h-3.5 ${isLoggingIn ? 'animate-spin' : ''}`} />
               <span className="hidden md:inline">구글 로그인 (클라우드 백업)</span>
             </button>
           )}
@@ -1783,6 +1882,50 @@ export default function App() {
                 className="px-4 py-1.5 text-xs font-medium rounded-lg cursor-pointer hover:opacity-85"
               >
                 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auth Error Notification Modal */}
+      {authErrorMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div
+            style={{
+              backgroundColor: themeConfig.bgSurface,
+              borderColor: themeConfig.border,
+              color: themeConfig.textPrimary,
+            }}
+            className="w-full max-w-md border rounded-xl shadow-2xl p-5 space-y-4"
+          >
+            <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: themeConfig.borderLight }}>
+              <div className="flex items-center gap-2 font-bold text-sm text-amber-500">
+                <span>⚠️ Firebase 로그인 알림</span>
+              </div>
+              <button
+                onClick={() => setAuthErrorMessage(null)}
+                style={{ color: themeConfig.textMuted }}
+                className="p-1 hover:opacity-80 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs whitespace-pre-line leading-relaxed" style={{ color: themeConfig.textSecondary }}>
+              {authErrorMessage}
+            </p>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setAuthErrorMessage(null)}
+                style={{
+                  backgroundColor: themeConfig.primary,
+                  color: themeConfig.primaryText,
+                }}
+                className="px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer hover:opacity-90"
+              >
+                확인
               </button>
             </div>
           </div>

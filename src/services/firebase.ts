@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User,
@@ -29,6 +31,9 @@ export const auth = getAuth(app);
 export const db: Firestore = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
 
 // Error handler helper conforming to FirestoreErrorInfo standard
 export enum OperationType {
@@ -83,11 +88,35 @@ export async function testConnection() {
   }
 }
 
-// Auth helpers
-export async function signInWithGoogle(): Promise<User> {
+// Check for redirect result on app boot (for mobile / redirect flow)
+export async function checkRedirectAuth(): Promise<User | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (result && result.user) {
+      const userRef = doc(db, 'users', result.user.uid);
+      await setDoc(
+        userRef,
+        {
+          uid: result.user.uid,
+          email: result.user.email || '',
+          displayName: result.user.displayName || '',
+          photoURL: result.user.photoURL || '',
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      return result.user;
+    }
+  } catch (error) {
+    console.warn('Redirect auth check warning:', error);
+  }
+  return null;
+}
+
+// Auth helpers: tries popup first, gracefully falls back to redirect for mobile web/in-app browsers
+export async function signInWithGoogle(): Promise<User | null> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    // Sync user doc
     if (result.user) {
       const userRef = doc(db, 'users', result.user.uid);
       await setDoc(
@@ -103,7 +132,19 @@ export async function signInWithGoogle(): Promise<User> {
       );
     }
     return result.user;
-  } catch (error) {
+  } catch (error: any) {
+    const errorCode = error?.code || '';
+    // If popup was blocked, closed, or not supported (e.g. mobile Safari / Chrome WebView), fallback to redirect
+    if (
+      errorCode === 'auth/popup-blocked' ||
+      errorCode === 'auth/popup-closed-by-user' ||
+      errorCode === 'auth/cancelled-popup-request' ||
+      errorCode === 'auth/operation-not-supported-in-this-environment'
+    ) {
+      console.log('Popup prevented, falling back to signInWithRedirect...');
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
     console.error('Sign-in failed:', error);
     throw error;
   }

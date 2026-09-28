@@ -5,7 +5,38 @@ const STORAGE_KEYS = {
   FOLDERS: 'simple_log_folders_v2',
   LOGS: 'simple_log_items_v2',
   THEME: 'simple_log_theme_v2',
+  OFFLINE_BACKUP_LOGS: 'simple_log_offline_backup_logs_v1',
+  OFFLINE_BACKUP_FOLDERS: 'simple_log_offline_backup_folders_v1',
 };
+
+// Backup offline data before any cloud overwrite
+export function backupOfflineData(logs: LogEntry[], folders: Folder[]) {
+  try {
+    if (logs && logs.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.OFFLINE_BACKUP_LOGS, JSON.stringify(logs));
+    }
+    if (folders && folders.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.OFFLINE_BACKUP_FOLDERS, JSON.stringify(folders));
+    }
+  } catch (e) {
+    console.error('Failed to backup offline data:', e);
+  }
+}
+
+export function getOfflineBackupData(): { logs: LogEntry[]; folders: Folder[] } {
+  try {
+    const rawLogs = localStorage.getItem(STORAGE_KEYS.OFFLINE_BACKUP_LOGS);
+    const rawFolders = localStorage.getItem(STORAGE_KEYS.OFFLINE_BACKUP_FOLDERS);
+    const logs = rawLogs ? JSON.parse(rawLogs) : [];
+    const folders = rawFolders ? JSON.parse(rawFolders) : [];
+    return {
+      logs: Array.isArray(logs) ? logs : [],
+      folders: Array.isArray(folders) ? folders : [],
+    };
+  } catch {
+    return { logs: [], folders: [] };
+  }
+}
 
 export function getStoredTheme(): ThemeMode {
   try {
